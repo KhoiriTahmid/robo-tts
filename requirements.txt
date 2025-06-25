@@ -1,3 +1,5 @@
 fastapi
 uvicorn
 edge-tts
+easyocr
+opencv-python

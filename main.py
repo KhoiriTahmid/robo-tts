@@ -1,8 +1,8 @@
 import edge_tts
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
-import easyocr
+import pytesseract
+import numpy as np
 import cv2
 import re
 
@@ -17,13 +17,22 @@ def split_image(img):
   right_img = img[:, width // 2:]
   return left_img, right_img
 
-def read_image():
-  img = cv2.imread("image.jpeg")
+def read_image(file: UploadFile):
+    try:
+        # Read the contents of the uploaded file into memory
+        contents = file.file.read()
+        # Convert the contents to a NumPy array
+        np_arr = np.frombuffer(contents, np.uint8)
+        # Decode the NumPy array into an image using OpenCV
+        img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        
+        if img is None:
+            raise ValueError("File is not a valid image.")
+            
+        return img
+    except Exception as e:
+        raise ValueError(f"Failed to read or process uploaded image: {e}")
 
-  if img is None:
-    raise ValueError("Image not found or unreadable. Check the file path.")
-
-  return img
 def clean_text(raw_text):
     # Ganti newline dengan spasi
     text = raw_text.replace('\n', ' ')
@@ -45,27 +54,21 @@ def clean_text(raw_text):
 
     return text
 
-async def get_text():
+async def get_text(file: UploadFile):
     # read image
-    img_1 = read_image()
+    img_2 = read_image(file)
 
     # split jadi 2
-    left_img_1, right_img_1 = split_image(img_1)
+    left_img_2, right_img_2 = split_image(img_2)
 
-    # Convert to RGB
-    left_rgb = cv2.cvtColor(left_img_1, cv2.COLOR_BGR2RGB)
-    right_rgb = cv2.cvtColor(right_img_1, cv2.COLOR_BGR2RGB)
+    # Step 4: Perform OCR
+    text_left_2 = pytesseract.image_to_string(left_img_2)
+    text_right_2 = pytesseract.image_to_string(right_img_2)
 
-    # Read both halves
-    reader = easyocr.Reader(['id'])  # 'id' for Indonesian
-    left_text_1 = reader.readtext(left_rgb, detail=0, paragraph=True)
-    right_text_1 = reader.readtext(right_rgb, detail=0, paragraph=True)
-
-    # Combine texts: left first, then right
-    all_text_1 = left_text_1[0] + right_text_1[0]
-    cleaned_text_1 = clean_text(all_text_1)
-    print(cleaned_text_1)
-    return cleaned_text_1
+    all_text_2 = text_left_2 + text_right_2
+    final = clean_text(all_text_2)
+    print(final)
+    return final
 
 async def get_audio(text):
     try:
@@ -74,14 +77,14 @@ async def get_audio(text):
     except Exception as e:
         raise RuntimeError(f"Can't generate audio: {e}")
 
-class TextInput(BaseModel):
-  text:str
-
 @app.post("/get_audio/")
-async def predict_comments():
+async def predict_comments(image: UploadFile = File(...)):
+    if not image.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File provided is not an image.")
+    
     file_path = "output.mp3"
     try:
-        text = await get_text()
+        text = await get_text(image)
         await get_audio(text)
         return FileResponse(file_path, media_type="audio/mpeg", filename="output.mp3")
     except RuntimeError as e:

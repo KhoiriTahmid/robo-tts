@@ -1,7 +1,7 @@
 import edge_tts
 from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.responses import FileResponse
-import pytesseract
+import easyocr
 import numpy as np
 import cv2
 import re
@@ -56,19 +56,24 @@ def clean_text(raw_text):
 
 async def get_text(file: UploadFile):
     # read image
-    img_2 = read_image(file)
+    img_1 = read_image(file)
 
     # split jadi 2
-    left_img_2, right_img_2 = split_image(img_2)
+    left_img_1, right_img_1 = split_image(img_1)
 
-    # Step 4: Perform OCR
-    text_left_2 = pytesseract.image_to_string(left_img_2)
-    text_right_2 = pytesseract.image_to_string(right_img_2)
+    # Convert to RGB
+    left_rgb = cv2.cvtColor(left_img_1, cv2.COLOR_BGR2RGB)
+    right_rgb = cv2.cvtColor(right_img_1, cv2.COLOR_BGR2RGB)
 
-    all_text_2 = text_left_2 + text_right_2
-    final = clean_text(all_text_2)
-    print(final)
-    return final
+    # Read both halves
+    reader = easyocr.Reader(['id'])  # 'id' for Indonesian
+    left_text_1 = reader.readtext(left_rgb, detail=0, paragraph=True)
+    right_text_1 = reader.readtext(right_rgb, detail=0, paragraph=True)
+
+    # Combine texts: left first, then right
+    all_text_1 = left_text_1[0] + right_text_1[0]
+    print("\n")
+    print(all_text_1)
 
 async def get_audio(text):
     try:

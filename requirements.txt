@@ -1,6 +1,7 @@
 fastapi
 uvicorn
 edge-tts
-pytesseract
+easyocr
 opencv-python
+python-multipart
 numpy

@@ -10,6 +10,9 @@ app = FastAPI(
     title="k3",
     description="API untuk TTS",
 )
+
+reader = easyocr.Reader(['id'])
+
 def split_image(img):
   height, width, _ = img.shape
 
@@ -66,14 +69,13 @@ async def get_text(file: UploadFile):
     right_rgb = cv2.cvtColor(right_img_1, cv2.COLOR_BGR2RGB)
 
     # Read both halves
-    reader = easyocr.Reader(['id'])  # 'id' for Indonesian
-    left_text_1 = reader.readtext(left_rgb, detail=0, paragraph=True)
-    right_text_1 = reader.readtext(right_rgb, detail=0, paragraph=True)
+    left_text = reader.readtext(left_rgb, detail=0, paragraph=True)
+    right_text = reader.readtext(right_rgb, detail=0, paragraph=True)
 
     # Combine texts: left first, then right
-    all_text_1 = left_text_1[0] + right_text_1[0]
-    print("\n")
-    print(all_text_1)
+    all_text = " ".join(left_text + right_text)
+    cleaned_text = clean_text(all_text)
+    return cleaned_text
 
 async def get_audio(text):
     try:
@@ -82,7 +84,11 @@ async def get_audio(text):
     except Exception as e:
         raise RuntimeError(f"Can't generate audio: {e}")
 
-@app.post("/get_audio/")
+def delete_file(path: str):
+    import os
+    os.remove(path)
+    
+@app.post("/tts/")
 async def predict_comments(image: UploadFile = File(...)):
     if not image.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File provided is not an image.")
@@ -91,6 +97,7 @@ async def predict_comments(image: UploadFile = File(...)):
     try:
         text = await get_text(image)
         await get_audio(text)
-        return FileResponse(file_path, media_type="audio/mpeg", filename="output.mp3")
+        background_tasks.add_task(delete_file, file_path)
+        return FileResponse(file_path, media_type="audio/mpeg", filename=file_path)
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
